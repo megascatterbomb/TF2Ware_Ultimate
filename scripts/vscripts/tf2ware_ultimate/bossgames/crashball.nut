@@ -13,21 +13,21 @@ minigame <- Ware_MinigameData
 	start_freeze   = 0.5
 })
 
-max_players_per_arena <- 4 // DO NOT CHANGE.
-absolute_max_rounds <- 1 // Incremented in OnStart based on starting player count. Initial definition acts as an offset.
+local max_players_per_arena = 4 // DO NOT CHANGE.
+local absolute_max_rounds = 1 // Incremented in OnStart based on starting player count. Initial definition acts as an offset.
 
-goal_distance_from_center <- 336.0 // If a ball is this far from the center of the arena, it will score.
-player_distance_from_center <- 304.0 // Players spawn this far from the center of the arena.
-targetname_prefix <- "crashball" // Prefix for all entities in the arenas.
+local goal_distance_from_center = 336.0 // If a ball is this far from the center of the arena, it will score.
+local player_distance_from_center = 304.0 // Players spawn this far from the center of the arena.
+local targetname_prefix = "crashball" // Prefix for all entities in the arenas.
 
-timestamp_round_start <- Time() // Time when the current round started.
-timestamp_last_update <- Time() // Time when the last update occurred.
+local timestamp_round_start = Time() // Time when the current round started.
+local timestamp_last_update = Time() // Time when the last update occurred.
 
-remaining_playercount <- 101 // Number of players remaining in the minigame.
+local remaining_playercount = 101 // Number of players remaining in the minigame.
 
-ball_model <- "models/tf2ware_ultimate/big_soccer_ball.mdl"
-ball_scale <- 1
-ball_min_velocity <- 100.0
+local ball_model = "models/tf2ware_ultimate/big_soccer_ball.mdl"
+local ball_scale = 1
+local ball_min_velocity = 100.0
 
 enum CrashballState
 {
@@ -38,125 +38,15 @@ enum CrashballState
 	Cleaned = 4
 }
 
-round_number <- 0
-current_round <- null
-current_state <- 0
+local round_number = 0
+local current_round = null
+local current_state = 0
 
-active_round <- null
+local active_round = null
 
 // CRASHBALL CLASSES
 
-class CrashballRound {
-	// REQUIRED
-	player_groups = null // Array of arrays of player handles for the players in each arena.
-
-	// OPTIONAL
-	round_config = null
-
-	// INTERNAL
-	arenas = [] // Array of CrashballArena objects.
-	constructor(table = null)
-	{
-		round_config = {} // Arena configuration.
-
-		if (table)
-		{
-			foreach (key, value in table)
-				this[key] = value
-		}
-	}
-
-	function Setup()
-	{
-		foreach(index, group in player_groups)
-		{
-			local arena_config = round_config
-
-			arena_config.players <- group
-			arena_config.index <- index
-
-			local a = CrashballArena(arena_config)
-
-			arenas.append(a)
-		}
-
-		foreach (arena in arenas)
-		{
-			arena.Setup()
-		}
-	}
-
-	function UpdateScoreboards(forced_message = null)
-	{
-		foreach (arena in arenas)
-		{
-			arena.UpdateScoreboard(forced_message)
-		}
-	}
-
-	function Start()
-	{
-		foreach (arena in arenas)
-		{
-			arena.Start()
-		}
-		current_state = CrashballState.Gaming
-	}
-
-	function Update()
-	{
-		remaining_playercount = Ware_
-
-		foreach (arena in arenas)
-		{
-			arena.Update()
-		}
-	}
-
-	function TransitionToEnd()
-	{
-		if (current_state = CrashballState.Gaming)
-		{
-			current_state = CrashballState.Ending
-			foreach (arena in arenas)
-			{
-				arena.TransitionToEnd()
-			}
-			return true
-		}
-		return false
-	}
-
-	function End()
-	{
-		current_state = CrashballState.Finished
-		Ware_CreateTimer(@() CleanupCrashballRound(), 3.0)
-	}
-
-	function CheckIfAllArenasFinished()
-	{
-		foreach (arena in arenas)
-		{
-			if (arena.arena_state != CrashballState.Finished)
-			{
-				return false;
-			}
-		}
-		End()
-		return true;
-	}
-
-	function Cleanup()
-	{
-		foreach (arena in arenas)
-		{
-			arena.Cleanup()
-		}
-		current_state = CrashballState.Cleaned
-	}
-}
-
-class CrashballArena {
+local CrashballArena = class {
 	// Arrays are always ordered north-south-east-west (+y, -y, +x, -x)
 	// REQUIRED
 	players = null // Array of player handles for players in this arena.
@@ -183,7 +73,7 @@ class CrashballArena {
 	env_lasers = []
 	func_brushes = []
 
-	constructor(table = null)
+	function constructor(table = null)
 	{
 		lives = 15 // Number of lives each player starts with.
 
@@ -215,15 +105,15 @@ class CrashballArena {
 	{
 		// Activate the template
 		point_template = GetArenaEnt("template_a")
-		point_template.AcceptInput("ForceSpawn")
+		point_template.AcceptInput("ForceSpawn", "", null, null)
 
-		// Set all players to the same class (Pyro)
-		// Give them just the Dragon's fury (for airblasting balls) and set their health accordingly.
-		local health_penalty = 175 - lives
+		// Set all players to the same class (Spy)
+		// Give them just the Knife (for knocking balls) and set their health accordingly.
+		local health_penalty = 125 - lives
 
 		foreach(player in players)
 		{
-			Ware_SetPlayerLoadout(player, TF_CLASS_PYRO, "Dragon's Fury", {"max health additive penalty": health_penalty})
+			Ware_SetPlayerLoadout(player, TF_CLASS_SPY, "Knife", {"max health additive penalty": -health_penalty})
 		}
 
 		foreach(player in players)
@@ -267,17 +157,25 @@ class CrashballArena {
 			GetArenaEnt("wall_west")
 		]
 
-		point_worldtext = GetArenaEnt("scoreboard")
+		point_worldtext = SpawnEntityFromTable("point_worldtext", {
+			angles = "0 0 0"
+			color = "255 255 255"
+			font = 0
+			orientation = 2
+			textsize = 32
+			textspacing = -18
+			targetname = format("%s_scoreboard-%d", targetname_prefix, index)
+		})
 
 		UpdateScoreboard()
 
 		// Wall off unused sides for 2 and 3 player games
-		if (players <= 2)
+		if (players.len() <= 2)
 		{
 			env_lasers[2].AcceptInput("TurnOn", "", null, null)
 			func_brushes[2].AcceptInput("Enable", "", null, null)
 		}
-		if (players <= 3)
+		if (players.len() <= 3)
 		{
 			env_lasers[3].AcceptInput("TurnOn", "", null, null)
 			func_brushes[3].AcceptInput("Enable", "", null, null)
@@ -311,25 +209,25 @@ class CrashballArena {
 			local ball_velocity = ball.GetPhysVelocity()
 			local min_velocity_squared = ball_min_velocity * ball_min_velocity
 
-			if (ball_origin.y > goal_distance_from_center)
+			if (ball_origin.y > center.y + goal_distance_from_center)
 			{
 				ScoreGoal(ball, 0)
 			}
-			else if (-ball_origin.y > goal_distance_from_center)
+			else if (ball_origin.y < center.y - goal_distance_from_center)
 			{
 				ScoreGoal(ball, 1)
 			}
-			else if (ball_origin.x > goal_distance_from_center)
+			else if (ball_origin.x > center.x + goal_distance_from_center)
 			{
 				ScoreGoal(ball, 2)
 			}
-			else if (-ball_origin.x > goal_distance_from_center) {
+			else if (ball_origin.x < center.x - goal_distance_from_center) {
 				ScoreGoal(ball, 3)
 			}
 			// Set ball velocity to a minimum value (else-if because the previous ifs will delete the ball!)
 			else if (ball_velocity.x * ball_velocity.x + ball_velocity.y + ball_velocity.y < min_velocity_squared)
 			{
-				local new_velocity = (ball_velocity * 1.05) + Vector(RandomFloat(1.0, 5.0), RandomFloat(1.0, 5.0), 0)
+				local new_velocity = (ball_velocity * 1.05) + Vector(RandomFloat(-1.0, 1.0), RandomFloat(-1.0, 1.0), 0)
 				new_velocity.z = 0
 				ball.SetPhysVelocity(new_velocity)
 			} else {
@@ -343,14 +241,15 @@ class CrashballArena {
 
 	function SpawnBall()
 	{
+		local offset = Vector(0, 0, 64)
 		local ball = Ware_SpawnEntity("prop_soccer_ball", {
 			targetname = format("%s_ball-%d", targetname_prefix, index)
 			model = ball_model,
-			origin = center,
+			origin = center + offset,
 			skin = 0
 		})
 
-		local init_velocity = Vector(RandomFloat(10.0, 100.0), RandomFloat(10.0, 100.0), 0)
+		local init_velocity = Vector(RandomFloat(-10.0, 10.0), RandomFloat(-10.0, 10.0), 0)
 
 		ball.SetPhysVelocity(init_velocity)
 	}
@@ -366,9 +265,9 @@ class CrashballArena {
 				func_brushes[player_index].AcceptInput("Enable", "", null, null)
 			}
 
-			local vecPunch = GetPropVector(boss, "m_Local.m_vecPunchAngle");
+			local vecPunch = GetPropVector(player, "m_Local.m_vecPunchAngle");
 			player.TakeDamageCustom(player, player, null, Vector(0.0000001, 0.0000001, 0.0000001), ball.GetOrigin(), 1, DMG_PREVENT_PHYSICS_FORCE, TF_DMG_CUSTOM_PLASMA);
-			SetPropVector(boss, "m_Local.m_vecPunchAngle", vecPunch);
+			SetPropVector(player, "m_Local.m_vecPunchAngle", vecPunch);
 		}
 
 		ball.Kill()
@@ -585,6 +484,116 @@ class CrashballArena {
 	}
 }
 
+local CrashballRound = class {
+	// REQUIRED
+	player_groups = null // Array of arrays of player handles for the players in each arena.
+
+	// OPTIONAL
+	round_config = null
+
+	// INTERNAL
+	arenas = [] // Array of CrashballArena objects.
+	function constructor(table = null)
+	{
+		round_config = {} // Arena configuration.
+
+		if (table)
+		{
+			foreach (key, value in table)
+				this[key] = value
+		}
+	}
+
+	function Setup()
+	{
+		foreach(index, group in player_groups)
+		{
+			local arena_config = round_config
+
+			arena_config.players <- group
+			arena_config.index <- index
+
+			local a = CrashballArena(arena_config)
+
+			arenas.append(a)
+		}
+
+		foreach (arena in arenas)
+		{
+			arena.Setup()
+		}
+	}
+
+	function UpdateScoreboards(forced_message = null)
+	{
+		foreach (arena in arenas)
+		{
+			arena.UpdateScoreboard(forced_message)
+		}
+	}
+
+	function Start()
+	{
+		foreach (arena in arenas)
+		{
+			arena.Start()
+		}
+		current_state = CrashballState.Gaming
+	}
+
+	function Update()
+	{
+		remaining_playercount = Ware_GetAlivePlayers().len()
+
+		foreach (arena in arenas)
+		{
+			arena.Update()
+		}
+	}
+
+	function TransitionToEnd()
+	{
+		if (current_state = CrashballState.Gaming)
+		{
+			current_state = CrashballState.Ending
+			foreach (arena in arenas)
+			{
+				arena.TransitionToEnd()
+			}
+			return true
+		}
+		return false
+	}
+
+	function End()
+	{
+		current_state = CrashballState.Finished
+		Ware_CreateTimer(@() CleanupCrashballRound(), 3.0)
+	}
+
+	function CheckIfAllArenasFinished()
+	{
+		foreach (arena in arenas)
+		{
+			if (arena.arena_state != CrashballState.Finished)
+			{
+				return false;
+			}
+		}
+		End()
+		return true;
+	}
+
+	function Cleanup()
+	{
+		foreach (arena in arenas)
+		{
+			arena.Cleanup()
+		}
+		current_state = CrashballState.Cleaned
+	}
+}
+
 // CRASHBALL FUNCTIONS
 
 function StartCrashballRound()
@@ -747,7 +756,7 @@ function OnTeleport(players)
 
 function OnStart()
 {
-	remaining_playercount <- Ware_GetAlivePlayers().len()
+	remaining_playercount = Ware_GetAlivePlayers().len()
 
 	local i = remaining_playercount
 	while (i > 1)
