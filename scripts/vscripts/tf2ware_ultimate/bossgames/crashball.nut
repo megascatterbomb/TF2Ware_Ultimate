@@ -6,7 +6,8 @@ minigame <- Ware_MinigameData
 	duration       = INT_MAX.tofloat() // actual duration varies wildly depending on playercount.
     min_players    = 2
 	location       = "crashball"
-	music          = "crashball"
+	music          = "ghostbusters-bustin"
+	custom_overlay = "get_end"
     thirdperson    = true
 	fail_on_death  = true
 	start_freeze   = 0.5
@@ -54,7 +55,7 @@ class CrashballRound {
 
 	// INTERNAL
 	arenas = [] // Array of CrashballArena objects.
-	function constructor(table = null)
+	constructor(table = null)
 	{
 		round_config = {} // Arena configuration.
 
@@ -67,14 +68,16 @@ class CrashballRound {
 
 	function Setup()
 	{
-		foreach(group, index in player_groups)
+		foreach(index, group in player_groups)
 		{
 			local arena_config = round_config
 
 			arena_config.players <- group
 			arena_config.index <- index
 
-			arenas.append(CrashballArena(arena_config))
+			local a = CrashballArena(arena_config)
+
+			arenas.append(a)
 		}
 
 		foreach (arena in arenas)
@@ -102,7 +105,7 @@ class CrashballRound {
 
 	function Update()
 	{
-		remaining_playercount = active_players.len()
+		remaining_playercount = Ware_
 
 		foreach (arena in arenas)
 		{
@@ -180,7 +183,7 @@ class CrashballArena {
 	env_lasers = []
 	func_brushes = []
 
-	function constructor(table = null)
+	constructor(table = null)
 	{
 		lives = 15 // Number of lives each player starts with.
 
@@ -243,7 +246,7 @@ class CrashballArena {
 			QAngle(0, 0, 0)
 		]
 
-		foreach(player, index in players)
+		foreach(index, player in players)
 		{
 			Ware_TeleportPlayer(player, player_positions[index], player_angles[index], vec3_zero)
 		}
@@ -373,7 +376,7 @@ class CrashballArena {
 
 	function TransitionToEnd()
 	{
-		if (arena_state != CrashballArena.Gaming) return;
+		if (arena_state != CrashballState.Gaming) return;
 		arena_state = CrashballState.Ending
 
 		// Determine winner(s) of this arena
@@ -400,7 +403,7 @@ class CrashballArena {
 		// We now have our winners. Kill the others
 		local winner_indices = winners.map(@(w) players.find(w)).filter(@(i) i != null)
 
-		foreach(player, i in players)
+		foreach(i, player in players)
 		{
 			if (winner_indices.find(i) != null) continue;
 
@@ -413,8 +416,8 @@ class CrashballArena {
 
 	function End()
 	{
-		if (arena_state != CrashballArena.Ending) return;
-		foreach(player, i in players)
+		if (arena_state != CrashballState.Ending) return;
+		foreach(i, player in players)
 		{
 			env_lasers[i].AcceptInput("TurnOff", "", null, null)
 			func_brushes[i].AcceptInput("Disable", "", null, null)
@@ -542,7 +545,7 @@ class CrashballArena {
 					else
 					{
 						message = "WINNERS:"
-						foreach(player, i in winners)
+						foreach(i, player in winners)
 						{
 							message += "\n" + GetPropString(player, "m_szNetname")
 						}
@@ -587,15 +590,15 @@ class CrashballArena {
 function StartCrashballRound()
 {
 	round_number++
-	active_players = Ware_GetAlivePlayers()
-	remaining_playercount = active_players.len()
+	local players = Ware_GetAlivePlayers()
+	remaining_playercount = players.len()
 
 	if (remaining_playercount <= 1 || (current_round && current_round.final))
 	{
 		// We have a winner!
-		foreach(player in active_players)
+		foreach(player in players)
 		{
-			Ware_PassPlayer(active_players)
+			Ware_PassPlayer(players)
 		}
 		Ware_CreateTimer(@() Ware_EndMinigame(), 1.0)
 		return
@@ -607,11 +610,11 @@ function StartCrashballRound()
 	// To stop this, absolute_max_rounds is set to 1 above the expected amount of rounds.
 	// Realistically 99.9% of games should end in the expected amount of rounds.
 	local is_final = (current_round && current_round.final)
-		|| active_players.len() <= max_players_per_arena
+		|| players.len() <= max_players_per_arena
 		|| round_number >= absolute_max_rounds
 
     current_round = CrashballRound({
-		player_groups = DividePlayersIntoArenas()
+		player_groups = DividePlayersIntoArenas(players)
 		round_config = GetRoundConfig(is_final)
 	})
 
@@ -629,9 +632,8 @@ function StartCrashballRound()
 // Arenas are divided to maximise the number of players in each arena.
 // Every arena will always have at least 3 players, unless there are exactly 2 or 5 players.
 // Returns array of arrays of player handles.
-function DividePlayersIntoArenas()
+function DividePlayersIntoArenas(players)
 {
-	local players = clone(active_players)
 	local groups = []
 
 	function CreateGroup(size)
@@ -738,17 +740,16 @@ function OnPrecache()
 	// precache models
 }
 
-function OnTeleport()
+function OnTeleport(players)
 {
 	// do nothing: we handle teleports during the round.
 }
 
 function OnStart()
 {
-	active_players = Ware_GetAlivePlayers()
-	remaining_playercount = active_players.len()
+	remaining_playercount <- Ware_GetAlivePlayers().len()
 
-	local i = active_players.len()
+	local i = remaining_playercount
 	while (i > 1)
 	{
 		absolute_max_rounds++

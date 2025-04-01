@@ -86,7 +86,7 @@ Ware_Location.sawrun <-
 {
 	center   = Vector(4480, -4000, -4495)
 	finish   = Vector(4480, -3056, -4495)
-	Teleport = function(players) 
+	Teleport = function(players)
 	{
 		local spacing_x = -50.0, spacing_y = 50.0
 		if (players.len() > 40)
@@ -106,14 +106,14 @@ Ware_Location.sawrun_micro <-
 {
 	center   = Vector(-160, 5546, -11887)
 	finish   = Vector(-160, 5948, -11887)
-	Teleport = function(players) 
+	Teleport = function(players)
 	{
 		local spacing_x = -50.0, spacing_y = 50.0
 		if (players.len() > 40)
 		{
 			spacing_x *= 0.75
 			spacing_y *= 0.5
-		}	
+		}
 		Ware_TeleportPlayersRow(players,
 			center - Vector(0, 512, 0),
 			QAngle(0, 90, 0),
@@ -130,7 +130,7 @@ Ware_Location.targetrange <-
 	left_mid  = Vector(2240, -4670, -3999)
 	right_mid = Vector(2303, -3135, -3999)
 	cameras   = ["targetrange_camera1", "targetrange_camera2"]
-	lines	  = 
+	lines	  =
 	[
 		[Vector(2400, -4056, -3999), Vector(2944, -4056, -3999)],
 		[Vector(1536, -4056, -3999), Vector(2080, -4056, -3999)],
@@ -145,12 +145,12 @@ Ware_Location.targetrange <-
 	TeleportTeamsToSides = function(players, pos_left, pos_right)
 	{
 		local red_players = players.filter(@(i, player) player.GetTeam() == TF_TEAM_RED)
-		local blue_players = players.filter(@(i, player) player.GetTeam() == TF_TEAM_BLUE)	
-		local left_team = RandomInt(TF_TEAM_RED, TF_TEAM_BLUE)		
+		local blue_players = players.filter(@(i, player) player.GetTeam() == TF_TEAM_BLUE)
+		local left_team = RandomInt(TF_TEAM_RED, TF_TEAM_BLUE)
 		if (left_team == TF_TEAM_RED)
 			TeleportSide(red_players, blue_players, pos_left, pos_right)
 		else
-			TeleportSide(blue_players, red_players, pos_left, pos_right)	
+			TeleportSide(blue_players, red_players, pos_left, pos_right)
 	}
 	TeleportSide = function(players_left, players_right, pos_left, pos_right)
 	{
@@ -166,13 +166,13 @@ Ware_Location.targetrange <-
 					pos.y += y_offset
 					x = 1
 				}
-				
+
 				pos.x = origin.x + (x / 2) * ((x & 1) ? x_offset : -x_offset)
 				Ware_TeleportPlayer(player, pos, angles, vec3_zero)
-			}		
-		}	
+			}
+		}
 		PlaceSide(players_left, pos_left, QAngle(0, 90, 0), 80.0)
-		PlaceSide(players_right, pos_right, QAngle(0, 270, 0), -80.0)	
+		PlaceSide(players_right, pos_right, QAngle(0, 270, 0), -80.0)
 	}
 }
 
@@ -183,8 +183,8 @@ Ware_Location.boxarena <-
 	maxs     = Vector(-832, 9152, -5552)
 	radius   = 600.0
 	cameras  = ["boxarena_camera"]
-	Teleport = function(players) 
-	{ 
+	Teleport = function(players)
+	{
 		local r = radius
 		if (players.len() > 40.0)
 			r += 200.0
@@ -200,10 +200,10 @@ Ware_Location.beach <-
 	cameras  = ["beach_camera"]
 	Teleport = function(players)
 	{
-		Ware_TeleportPlayersRow(players, 
-			center, 
-			QAngle(), 
-			1000.0, 
+		Ware_TeleportPlayersRow(players,
+			center,
+			QAngle(),
+			1000.0,
 			64.0, 64.0)
 	}
 }
@@ -240,7 +240,7 @@ Ware_Location.love <-
 	{
 		for (local wall; wall = FindByName(wall, "love_door*");)
 		{
-			MarkForPurge(wall)	
+			MarkForPurge(wall)
 			wall.AddFlag(FL_UNBLOCKABLE_BY_PLAYER)
 			walls.append(wall)
 		}
@@ -260,7 +260,7 @@ Ware_Location.kart_containers <-
 			pos.x -= 350.0
 			width += 600.0
 		}
-		Ware_TeleportPlayersRow(Ware_GetSortedScorePlayers(false), 
+		Ware_TeleportPlayersRow(Ware_GetSortedScorePlayers(false),
 			pos,
 			QAngle(0, 180, 0),
 			width,
@@ -281,9 +281,9 @@ Ware_Location.kart_paths <-
 		local sorted_players = Ware_GetSortedScorePlayers(true)
 		local red_players = sorted_players.filter(@(i, player) player.GetTeam() == TF_TEAM_RED)
 		local blue_players = sorted_players.filter(@(i, player) player.GetTeam() == TF_TEAM_BLUE)
-		
+
 		local left_team = RandomInt(TF_TEAM_RED, TF_TEAM_BLUE)
-		
+
 		if (left_team == TF_TEAM_RED)
 		{
 			Ware_TeleportPlayersRow(red_players, center_left, angles, width, spacing, spacing)
@@ -295,7 +295,7 @@ Ware_Location.kart_paths <-
 			Ware_TeleportPlayersRow(red_players, center_right, angles, width, spacing, spacing)
 		}
 	}
-	
+
 }
 
 Ware_Location.kart_ramp <-
@@ -303,7 +303,7 @@ Ware_Location.kart_ramp <-
 	center   = Vector(-7000, -10400, -6494)
 	Teleport = function(players)
 	{
-		Ware_TeleportPlayersRow(Ware_GetSortedScorePlayers(true), 
+		Ware_TeleportPlayersRow(Ware_GetSortedScorePlayers(true),
 			center,
 			QAngle(0, 90, 0),
 			1500.0,
@@ -320,7 +320,7 @@ Ware_Location.frogger <-
 		local spacing = 50.0
 		if (players.len() > 40)
 			spacing *= 0.7
-		Ware_TeleportPlayersRow(players, 
+		Ware_TeleportPlayersRow(players,
 			center,
 			QAngle(0, 90, 0),
 			400.0,
@@ -377,10 +377,10 @@ Ware_Location.hexplatforms <-
 			MarkForPurge(plat)
 			plat_models.append(plat.GetModelName())
 			plat.Kill()
-		}	
+		}
 	}
-	Teleport = function(players) 
-	{ 
+	Teleport = function(players)
+	{
 		// Handled by minigame because of dynamic pillars
 	}
 }
@@ -396,8 +396,8 @@ Ware_Location.dirtsquare <-
 Ware_Location.jumprope <-
 {
 	center      = Vector(80, -1008, -4959)
-	Teleport = function(players) 
-	{ 
+	Teleport = function(players)
+	{
 		local red_players  = players.filter(@(i, player) player.GetTeam() == TF_TEAM_RED)
 		local blue_players = players.filter(@(i, player) player.GetTeam() == TF_TEAM_BLUE)
 		local center_left  = center + Vector(0, 300, 0)
@@ -406,18 +406,18 @@ Ware_Location.jumprope <-
 		local spacing = 60.0
 		Ware_TeleportPlayersRow(red_players, center_left, QAngle(0, 270, 0), width, spacing, spacing)
 		Ware_TeleportPlayersRow(blue_players, center_right, QAngle(0, 90, 0), width, -spacing, spacing)
-	}	
+	}
 }
 
 Ware_Location.obstaclecourse <-
 {
 	center      = Vector(-1696, -3968, -3927)
 	cameras     = ["obstaclecourse_camera"]
-	Teleport = function(players) 
-	{ 
+	Teleport = function(players)
+	{
 		// highest scoring players start last
 		Ware_TeleportPlayersRow(Ware_GetSortedScorePlayers(false), center, QAngle(0, 90, 0), 600.0, -60.0, 60.0)
-	}	
+	}
 }
 
 Ware_Location.ballcourt <-
@@ -426,14 +426,14 @@ Ware_Location.ballcourt <-
 	left        = Vector(5792, -3064, -7199)
 	right       = Vector(5792, -1278, -7199)
 	cameras     = ["basketball_camera", "basketball_camera2"]
-	Teleport = function(players) 
-	{ 
+	Teleport = function(players)
+	{
 		local players_left = players.slice(0, players.len() / 2)
 		local players_right = players.slice(players.len() / 2)
 		local width = 1200.0
 		Ware_TeleportPlayersRow(players_left, left, QAngle(0, 90, 0), width, -60.0, 59.0)
 		Ware_TeleportPlayersRow(players_right, right, QAngle(0, 270, 0), width, 60.0, 59.0)
-	}	
+	}
 }
 
 Ware_Location.beepblockskyway_micro <-
@@ -452,7 +452,7 @@ Ware_Location.beepblockskyway_ultimate <-
 	center = Vector(-8960, -13500, -9760)
 	cameras = ["Beatblock_Camera4", "Beatblock_Camera5", "Beatblock_Camera6"]
 	Teleport = function(players)
-	{	
+	{
 		// highest scoring players start last
 		Ware_TeleportPlayersRow(Ware_GetSortedScorePlayers(true), center, QAngle(0, 90, 0), 900, 80, 110)
 	}
@@ -463,15 +463,15 @@ Ware_Location.warehouse <-
 	center = Vector(1000, 11200, -4159)
 	mins   = Vector(480, 11664, -4160)
 	maxs   = Vector(1560, 12592, -3648)
-	cameras = ["warehouse_camera"]	
+	cameras = ["warehouse_camera"]
 	Teleport = function(players)
 	{
-		Ware_TeleportPlayersRow(players, 
+		Ware_TeleportPlayersRow(players,
 			center,
 			QAngle(0, 90, 0),
 			900.0,
 			64.0, 64.0)
-	}	
+	}
 }
 
 Ware_Location.homerun_contest <-
@@ -518,8 +518,8 @@ Ware_Location.typing <-
 Ware_Location.boxingring <-
 {
 	center      = Vector(-900, -400, -5645)
-	Teleport = function(players) 
-	{ 
+	Teleport = function(players)
+	{
 		local red_players  = players.filter(@(i, player) player.GetTeam() == TF_TEAM_RED)
 		local blue_players = players.filter(@(i, player) player.GetTeam() == TF_TEAM_BLUE)
 		local center_left  = center + Vector(375, 0, 0)
@@ -553,6 +553,11 @@ Ware_Location.abcdeathpit <-  // NOTE: Players can get stuck if collisions are o
 	}
 }
 
+Ware_Location.crashball <-
+{
+	// everything's handled by the bossgame script
+}
+
 Ware_Location.waluigi_pinball <-
 {
 	center         = Vector(2240, 134, 8054)
@@ -566,7 +571,7 @@ Ware_Location.waluigi_pinball <-
 	bound_spinners = []
 	flippers       = []
 	checkpoints    = []
-	point_groups   = 
+	point_groups   =
 	[
 		[
 			Vector(11790.2, 4123.93, 5561.78)
@@ -693,7 +698,7 @@ Ware_Location.waluigi_pinball <-
 			Vector(14495.6, 4116.73, 5561.78)
 		]
 	],
-	itembox_positions = 
+	itembox_positions =
 	[
 		Vector(-10239, 2155.45, 11344.1)
 		Vector(-10091.1, 2155.11, 11344.1)
@@ -728,13 +733,13 @@ Ware_Location.waluigi_pinball <-
 
 	Init = function()
 	{
-		cannon_trigger = FindByName(null, "pinball_cannon")				
+		cannon_trigger = FindByName(null, "pinball_cannon")
 		for (local checkpoint; checkpoint = FindByName(checkpoint, "pinball_checkpoint*");)
 		{
 			MarkForPurge(checkpoint)
 			checkpoints.append(checkpoint)
 		}
-		
+
 		local bound_size = Vector(150, 150, 150)
 		for (local bound; bound = FindByName(bound, "pinball_bound*");)
 		{
@@ -752,7 +757,7 @@ Ware_Location.waluigi_pinball <-
 				bound_spinners.append(bound.GetScriptScope())
 			}
 		}
-		
+
 		for (local flipper; flipper = FindByName(flipper, "pinball_flipper_*");)
 		{
 			MarkForPurge(flipper)
