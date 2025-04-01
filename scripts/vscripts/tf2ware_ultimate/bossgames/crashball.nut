@@ -17,7 +17,13 @@ absolute_max_rounds <- 1 // Incremented in OnStart based on starting player coun
 
 arena_size <- 336.0 // If a ball is this far from the center of the arena, it will score.
 player_distance_from_center <- 304.0 // Players spawn this far from the center of the arena.
+scoreboard_distance_from_center <- 264.0 // Scoreboards are this far from the center of the arena.
 targetname_prefix <- "crashball" // Prefix for all entities in the arenas.
+
+timestamp_round_start <- Time() // Time when the current round started.
+timestamp_last_update <- Time() // Time when the last update occurred.
+
+remaining_playercount <- 101 // Number of players remaining in the minigame.
 
 ball_model <- "models/tf2ware_ultimate/big_soccer_ball.mdl"
 ball_scale <- 1
@@ -26,8 +32,9 @@ enum CrashballState
 {
 	Setup = 0
 	Gaming = 1
-	Countdown = 2
-	Postgame = 3
+	Ending = 2
+	Finished = 3
+	Cleaned = 4
 }
 
 round_number <- 0
@@ -52,7 +59,7 @@ class CrashballRound {
 
 	function Setup()
 	{
-		foreach (index, group in player_groups)
+		foreach(group, index in player_groups)
 		{
 			local arena_config = round_config
 
@@ -74,14 +81,31 @@ class CrashballRound {
 		{
 			arena.Start()
 		}
+		current_state = CrashballState.Gaming
 	}
 
 	function Update()
 	{
+		remaining_playercount = active_players.len()
+
 		foreach (arena in arenas)
 		{
 			arena.Update()
 		}
+	}
+
+	function TransitionToEnd()
+	{
+		if (current_state = CrashballState.Gaming)
+		{
+			current_state = CrashballState.Ending
+			foreach (arena in arenas)
+			{
+				arena.TransitionToEnd()
+			}
+			return true
+		}
+		return false
 	}
 
 	function End()
@@ -90,6 +114,7 @@ class CrashballRound {
 		{
 			arena.End()
 		}
+		current_state = CrashballState.Finished
 	}
 
 	function Cleanup()
@@ -98,6 +123,7 @@ class CrashballRound {
 		{
 			arena.Cleanup()
 		}
+		current_state = CrashballState.Cleaned
 	}
     // REQUIRED
     player_groups = null // Array of arrays of player handles for the players in each arena.
@@ -127,10 +153,7 @@ class CrashballArena {
 		// Do not set the first value to anything other than 0.0 unless something special needs to happen at the start of the game.
 		ball_limit_increase_times = [0.0, 10.0, 30.0, 60.0, 90.0]
 
-		// Maximum number of winners for this arena in event of timeout.
-		// Winners progress to the next round, or are awarded points if it's the final round.
-		// If a tie, then players involved in the tie win or lose depending on the ties_win value.
-		max_winners = 1
+		// If a tie, then everyone either wins (true) or loses (false) depending on the ties_win value.
 		ties_win = true
 
 		if (table)
@@ -147,13 +170,17 @@ class CrashballArena {
 		point_template.AcceptInput("ForceSpawn")
 
 		// Set all players to the same class (Pyro)
-		// Give them just the Dragon's fury (for airblasting balls)
-
+		// Give them just the Dragon's fury (for airblasting balls) and set their health accordingly.
 		local health_penalty = 175 - lives
 
 		foreach(player in players)
 		{
 			Ware_SetPlayerLoadout(player, TF_CLASS_PYRO, "Dragon's Fury", {"max health additive penalty": health_penalty})
+		}
+
+		foreach(player in players)
+		{
+			player.SetHealth(lives)
 		}
 
 		// Teleport players into position
@@ -164,22 +191,44 @@ class CrashballArena {
 			center + Vector(player_distance_from_center, 0, 0),
 			center + Vector(-player_distance_from_center, 0, 0)
 		]
+		local player_angles = [
+			QAngle(0, -90, 0),
+			QAngle(0, 90, 0),
+			QAngle(0, 180, 0),
+			QAngle(0, 0, 0)
+		]
 
 		foreach(player, index in players)
 		{
-			Ware_TeleportPlayer(player, player_positions[index])
+			Ware_TeleportPlayer(player, player_positions[index], player_angles[index], vec3_zero)
 		}
 
-		// Set players health
-		foreach(player in players)
-		{
-			player.SetHealth(lives)
-		}
+		// Get handles for other entities
+
+		env_lasers = [
+			GetArenaEnt("laser_north"),
+			GetArenaEnt("laser_south"),
+			GetArenaEnt("laser_east"),
+			GetArenaEnt("laser_west")
+		]
+
+		func_brushes = [
+			GetArenaEnt("wall_north"),
+			GetArenaEnt("wall_south"),
+			GetArenaEnt("wall_east"),
+			GetArenaEnt("wall_west")
+		]
+
+		point_worldtext = GetArenaEnt("scoreboard")
+
+		UpdateScoreboard()
 	}
 
 	function Start()
 	{
 		// TODO
+
+		arena_state = CrashballState.Gaming
 	}
 
 	function Update()
@@ -187,14 +236,67 @@ class CrashballArena {
 		// TODO
 	}
 
+	function TransitionToEnd()
+	{
+		if (arena_state != CrashballArena.Gaming) return;
+		arena_state = CrashballState.Ending
+
+		// Determine winner(s) of this arena
+		local survivors = players.filter(@(p) p.IsAlive())
+
+		survivors.sort(@(a, b) a.GetHealth() > b.GetHealth())
+
+		local winners = []
+
+		foreach(survivor in survivors) {
+			if (winners.len() == 0 || winners[0].GetHealth() == survivor.GetHealth())
+			{
+				if(winners.len() > 0 && !ties_win)
+				{
+					winners.clear()
+					break
+				}
+				winners.append(survivor)
+				continue
+			}
+			break
+		}
+
+		// We now have our winners. Kill the others
+		local winner_indices = winners.map(@(w) players.find(w)).filter(@(i) i != null)
+
+		foreach(player, i in players)
+		{
+			if (winner_indices.find(i) != null) continue;
+
+			env_lasers[i].AcceptInput("TurnOn", "", null, null)
+			func_brushes[i].AcceptInput("Disable", "", null, null)
+		}
+	}
+
 	function End()
 	{
-		// TODO
+		foreach(player, i in players)
+		{
+			env_lasers[i].AcceptInput("TurnOff", "", null, null)
+			func_brushes[i].AcceptInput("Disable", "", null, null)
+		}
+
+		remaining_playercount = Ware_GetAlivePlayers().len()
+
+		UpdateScoreboard()
+
+		arena_state = CrashballState.Finished
 	}
 
 	function Cleanup()
 	{
-		// TODO
+		// Remove all balls.
+		foreach(ball in GetAllArenaEnts("ball"))
+		{
+			ball.Remove()
+		}
+		arena_state = CrashballState.Cleaned
 	}
 
 	function GetArenaEnt(name, previous = null)
@@ -210,6 +312,107 @@ class CrashballArena {
 			ents.append(ent)
 		}
 		return ents
+	}
+
+	function GetLivesRemainingString(player)
+	{
+		local name = GetPropString(player, "m_szNetname");
+		local lives_left = player.IsAlive() ? player.GetHealth() : 0;
+
+		return format("%s: %d", name, lives_left);
+	}
+
+	function UpdateScoreboard()
+	{
+		switch (arena_state)
+		{
+			case CrashballState.Setup:
+				if (round_number == 1)
+				{
+					point_worldtext.AcceptInput("SetText", "DEFEND YOUR GOAL!", null, null)
+				}
+				else if (final)
+				{
+					point_worldtext.AcceptInput("SetText", format("%d PLAYERS REMAIN!\nFINAL ROUND!", remaining_playercount), null, null)
+				}
+				else
+				{
+					point_worldtext.AcceptInput("SetText", format("%d PLAYERS REMAIN!\nROUND %d", remaining_playercount, round_number), null, null)
+				}
+				break
+			case CrashballState.Gaming:
+			case CrashballState.Ending:
+				// Show scores for players in this arena.
+				local message = "LIVES REMAINING:"
+
+				// Show scores in clockwise order from the north during gameplay.
+				if (players.len() >= 1) message += "\n" + GetLivesRemainingString(players[0])
+				if (players.len() >= 3) message += "\n" + GetLivesRemainingString(players[2])
+				if (players.len() >= 2) message += "\n" + GetLivesRemainingString(players[1])
+				if (players.len() >= 4) message += "\n" + GetLivesRemainingString(players[3])
+
+				point_worldtext.AcceptInput("SetText", message, null, null)
+
+				break
+			case CrashballState.Finished:
+				// If final, declare the winners.
+				if (final)
+				{
+					local winners;
+					local message = "";
+					foreach (player in players)
+					{
+						if (player.IsAlive()) winners.append(player)
+					}
+					if (winners.len() == 0)
+					{
+						message = "YOU ALL LOST!"
+					}
+					else if (winners.len() == 1)
+					{
+						local name = GetPropString(winners[0], "m_szNetname");
+						message = format("%s WINS!", remaining_playercount, name)
+					}
+					else
+					{
+						message = "WINNERS:"
+						foreach(player, i in winners)
+						{
+							message += "\n" + GetPropString(player, "m_szNetname")
+						}
+					}
+				}
+				else
+				{
+					local survivors;
+					local message = "";
+					foreach (player in players)
+					{
+						if (player.IsAlive()) survivors.append(player)
+					}
+					if (survivors.len() == 0)
+					{
+						message = remaining_playercount == 0 ? "YOU ALL LOST!" : format("%d PLAYERS REMAIN!\nNONE OF YOU MADE IT...", remaining_playercount)
+					}
+					else if (survivors.len() == 1)
+					{
+						local name = GetPropString(survivors[0], "m_szNetname");
+						message = format("%d PLAYERS REMAIN!\n%s ADVANCES!", remaining_playercount, name)
+					}
+					else
+					{
+						message = format("%d PLAYERS REMAIN!\nTHESE PLAYERS ADVANCE:", remaining_playercount)
+						foreach (player in survivors)
+						{
+							message += "\n" + GetPropString(player, "m_szNetname")
+						}
+					}
+					point_worldtext.AcceptInput("SetText", message, null, null)
+				}
+				break
+			default:
+				return;
+		}
 	}
 
 	// Arrays are always ordered north-south-east-west (+y, -y, +x, -x)
@@ -229,10 +432,12 @@ class CrashballArena {
 	ties_win = null
 
 	// INTERNAL
+	arena_state = CrashballState.Setup
 	balls = [] // balls
 	ball_limit = 0
 	point_template = null
 	center = null
+	point_worldtext = null
 	env_lasers = []
 	func_brushes = []
 }
@@ -243,6 +448,7 @@ function StartCrashballRound()
 {
 	round_number++
 	active_players = Ware_GetAlivePlayers()
+	remaining_playercount = active_players.len()
 
 	if (active_players.len() <= 1 || (current_round && current_round.final))
 	{
@@ -251,7 +457,7 @@ function StartCrashballRound()
 		{
 			Ware_PassPlayer(active_players)
 		}
-		Ware_CreateTimer(@() Ware_EndMinigame(), 2.0)
+		Ware_CreateTimer(@() Ware_EndMinigame(), 1.0)
 		return
 	}
 
@@ -365,7 +571,10 @@ function GetRoundConfig(is_final)
 
 function EndCrashballRound()
 {
-
+	if (current_round.TransitionToEnd())
+	{
+		Ware_CreateTimer(@() EndCrashballRound(), 1.0)
+	}
 }
 
 function CleanupCrashballRound()
@@ -394,6 +603,7 @@ function OnTeleport()
 function OnStart()
 {
 	active_players = Ware_GetAlivePlayers()
+	remaining_playercount = active_players.len()
 
 	local i = active_players.len()
 	while (i > 1)
@@ -408,7 +618,8 @@ function OnStart()
 
 function OnUpdate()
 {
-    if (current_round) current_round.Update()
+	remaining_playercount = Ware_GetAlivePlayers().len()
+    if (current_state == CrashballState.Gaming && current_round) current_round.Update()
 }
 
 function OnCheckEnd()
