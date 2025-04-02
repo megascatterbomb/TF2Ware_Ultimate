@@ -27,7 +27,7 @@ local remaining_playercount = 101 // Number of players remaining in the minigame
 
 local ball_model = "models/tf2ware_ultimate/big_soccer_ball.mdl"
 local ball_scale = 1
-local ball_min_velocity = 100.0
+local ball_min_velocity = 300.0
 
 enum CrashballState
 {
@@ -144,10 +144,10 @@ local CrashballArena = class {
 		// Get handles for other entities
 
 		env_lasers = [
-			GetArenaEnt("laser_north"),
-			GetArenaEnt("laser_south"),
-			GetArenaEnt("laser_east"),
-			GetArenaEnt("laser_west")
+			[GetArenaEnt("laser_north_left"), GetArenaEnt("laser_north_right")],
+			[GetArenaEnt("laser_south_left"), GetArenaEnt("laser_south_right")],
+			[GetArenaEnt("laser_east_left"), GetArenaEnt("laser_east_right")],
+			[GetArenaEnt("laser_west_left"), GetArenaEnt("laser_west_right")]
 		]
 
 		func_brushes = [
@@ -159,10 +159,11 @@ local CrashballArena = class {
 
 		point_worldtext = SpawnEntityFromTable("point_worldtext", {
 			angles = "0 0 0"
-			color = "255 255 255"
+			color = "255 255 255 255"
+			origin = center + Vector(0, 0, 256)
 			font = 0
 			orientation = 2
-			textsize = 32
+			textsize = 16
 			textspacing = -18
 			targetname = format("%s_scoreboard-%d", targetname_prefix, index)
 		})
@@ -172,13 +173,13 @@ local CrashballArena = class {
 		// Wall off unused sides for 2 and 3 player games
 		if (players.len() <= 2)
 		{
-			env_lasers[2].AcceptInput("TurnOn", "", null, null)
-			func_brushes[2].AcceptInput("Enable", "", null, null)
+			SetLaser(2, true)
+			SetWall(2, true)
 		}
 		if (players.len() <= 3)
 		{
-			env_lasers[3].AcceptInput("TurnOn", "", null, null)
-			func_brushes[3].AcceptInput("Enable", "", null, null)
+			SetLaser(3, true)
+			SetWall(3, true)
 		}
 	}
 
@@ -187,7 +188,7 @@ local CrashballArena = class {
 		arena_state = CrashballState.Gaming
 		foreach(timestamp in ball_limit_increase_times)
 		{
-			Ware_CreateTimer(@() this.ball_limit++, timestamp)
+			Ware_CreateTimer(@() IncrementBallLimit(), timestamp)
 		}
 	}
 
@@ -197,6 +198,7 @@ local CrashballArena = class {
 		local balls = GetAllArenaEnts("ball")
 		if (Time() - ball_last_spawn >= 1.0 && balls.len() < ball_limit)
 		{
+			printl("" + ball_limit)
 			ball_last_spawn = Time()
 			SpawnBall()
 		}
@@ -207,6 +209,7 @@ local CrashballArena = class {
 			// Check if ball is in a goal
 			local ball_origin = ball.GetOrigin()
 			local ball_velocity = ball.GetPhysVelocity()
+			local ball_velocity_squared = ball_velocity.x * ball_velocity.x + ball_velocity.y * ball_velocity.y
 			local min_velocity_squared = ball_min_velocity * ball_min_velocity
 
 			if (ball_origin.y > center.y + goal_distance_from_center)
@@ -225,18 +228,30 @@ local CrashballArena = class {
 				ScoreGoal(ball, 3)
 			}
 			// Set ball velocity to a minimum value (else-if because the previous ifs will delete the ball!)
-			else if (ball_velocity.x * ball_velocity.x + ball_velocity.y + ball_velocity.y < min_velocity_squared)
+			else if (ball_velocity_squared < min_velocity_squared)
 			{
-				local new_velocity = (ball_velocity * 1.05) + Vector(RandomFloat(-1.0, 1.0), RandomFloat(-1.0, 1.0), 0)
-				new_velocity.z = 0
+				local new_velocity = (ball_velocity * 1.2)
+				if(ball_velocity_squared < 100.0) {
+					local new_velocity = Vector(
+						RandomInt(0, 1) ? RandomFloat(10.0, ball_min_velocity) : RandomFloat(-10.0, -ball_min_velocity),
+						RandomInt(0, 1) ? RandomFloat(10.0, ball_min_velocity) : RandomFloat(-10.0, -ball_min_velocity),
+						0)
+				}
+
+				if (new_velocity.z > 10.0) new_velocity.z = 10.0
 				ball.SetPhysVelocity(new_velocity)
 			} else {
-				ball_velocity.z = 0
+				if (ball_velocity.z > 10.0) ball_velocity.z = 10.0
 				ball.SetPhysVelocity(ball_velocity)
 			}
 		}
 
 		UpdateScoreboard()
+	}
+
+	function IncrementBallLimit()
+	{
+		ball_limit++
 	}
 
 	function SpawnBall()
@@ -261,16 +276,29 @@ local CrashballArena = class {
 		{
 			if (player.GetHealth() == 1) // They about to lose
 			{
-				env_lasers[player_index].AcceptInput("TurnOn", "", null, null)
-				func_brushes[player_index].AcceptInput("Enable", "", null, null)
+				SetLaser(player_index, true)
+				SetWall(player_index, true)
 			}
 
 			local vecPunch = GetPropVector(player, "m_Local.m_vecPunchAngle");
-			player.TakeDamageCustom(player, player, null, Vector(0.0000001, 0.0000001, 0.0000001), ball.GetOrigin(), 1, DMG_PREVENT_PHYSICS_FORCE, TF_DMG_CUSTOM_PLASMA);
+			player.TakeDamageCustom(player, player, null, Vector(0.0000001, 0.0000001, 0.0000001), ball.GetOrigin(), 1, DMG_BURN + DMG_PREVENT_PHYSICS_FORCE, TF_DMG_CUSTOM_PLASMA);
 			SetPropVector(player, "m_Local.m_vecPunchAngle", vecPunch);
 		}
 
 		ball.Kill()
+	}
+
+	function SetLaser(index, state)
+	{
+		foreach(laser in env_lasers[index])
+		{
+			laser.AcceptInput(state ? "TurnOn" : "TurnOff", "", null, null)
+		}
+	}
+
+	function SetWall(index, state)
+	{
+		func_brushes[index].AcceptInput(state ? "Enable" : "Disable", "", null, null)
 	}
 
 	function TransitionToEnd()
@@ -306,8 +334,8 @@ local CrashballArena = class {
 		{
 			if (winner_indices.find(i) != null) continue;
 
-			env_lasers[i].AcceptInput("TurnOn", "", null, null)
-			func_brushes[i].AcceptInput("Disable", "", null, null)
+			SetLaser(i, true)
+			SetWall(i, true)
 		}
 
 		Ware_CreateTimer(@() this.End(), 1.0)
@@ -318,8 +346,8 @@ local CrashballArena = class {
 		if (arena_state != CrashballState.Ending) return;
 		foreach(i, player in players)
 		{
-			env_lasers[i].AcceptInput("TurnOff", "", null, null)
-			func_brushes[i].AcceptInput("Disable", "", null, null)
+			SetLaser(i, false)
+			SetWall(i, false)
 		}
 
 		remaining_playercount = Ware_GetAlivePlayers().len()
@@ -337,20 +365,14 @@ local CrashballArena = class {
 			ball.Kill()
 		}
 
-		foreach(ent in env_lasers)
+		foreach(lasers in env_lasers)
 		{
-			ent.Kill()
+			foreach(ent in lasers)
+			{
+				ent.Kill()
+			}
 		}
 		env_lasers = []
-		foreach(ent in [
-			GetArenaEnt("laser_north_target")
-			GetArenaEnt("laser_south_target")
-			GetArenaEnt("laser_east_target")
-			GetArenaEnt("laser_west_target")
-		])
-		{
-			ent.Kill()
-		}
 		foreach (ent in func_brushes)
 		{
 			ent.Kill()
@@ -689,7 +711,7 @@ function GetRoundConfig(is_final)
             min_duration_before_countdown = 120.0
             max_duration_before_countdown = 150.0
             max_dead_before_countdown = 0.5
-            ball_limit_increase_times = [0.0, 10.0, 30.0, 60.0, 90.0, 120.0, 150.0]
+            ball_limit_increase_times = [0.0, 10.0, 30.0, 60.0, 90.0]
             countdown_duration = 30.0
         }
     }
