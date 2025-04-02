@@ -18,6 +18,7 @@ local absolute_max_rounds = 1 // Incremented in OnStart based on starting player
 
 local goal_distance_from_center = 336.0 // If a ball is this far from the center of the arena, it will score.
 local player_distance_from_center = 304.0 // Players spawn this far from the center of the arena.
+local player_size = 70
 local targetname_prefix = "crashball" // Prefix for all entities in the arenas.
 
 local timestamp_round_start = Time() // Time when the current round started.
@@ -208,9 +209,6 @@ local CrashballArena = class {
 		{
 			// Check if ball is in a goal
 			local ball_origin = ball.GetOrigin()
-			local ball_velocity = ball.GetPhysVelocity()
-			local ball_velocity_squared = ball_velocity.x * ball_velocity.x + ball_velocity.y * ball_velocity.y
-			local min_velocity_squared = ball_min_velocity * ball_min_velocity
 
 			if (ball_origin.y > center.y + goal_distance_from_center)
 			{
@@ -227,8 +225,41 @@ local CrashballArena = class {
 			else if (ball_origin.x < center.x - goal_distance_from_center) {
 				ScoreGoal(ball, 3)
 			}
-			// Set ball velocity to a minimum value (else-if because the previous ifs will delete the ball!)
-			else if (ball_velocity_squared < min_velocity_squared)
+		}
+		foreach(ball in balls)
+		{
+			if (!ball || !ball.IsValid()) continue
+
+			local ball_origin = ball.GetOrigin()
+			local ball_velocity = ball.GetPhysVelocity()
+			local player_size_squared = player_size * player_size
+
+			// default prop_soccer_ball physics is a bit unreliable, give a helping hand for deflecting
+			foreach(i, player in players)
+			{
+				if (!player || !player.IsValid() || !player.IsAlive() || (ball_origin - player.GetOrigin()).Length2DSqr() > player_size_squared) continue
+				switch (i) {
+					case 0: // north (+y), deflect towards -y
+						if (ball_velocity.y > -ball_min_velocity) ball_velocity.y = -ball_min_velocity
+						break
+					case 1: // south (-y), deflect towards +y
+						if (ball_velocity.y < ball_min_velocity) ball_velocity.y = ball_min_velocity
+						break
+					case 2: // east (+x), deflect towards -x
+						if (ball_velocity.x > -ball_min_velocity) ball_velocity.x = -ball_min_velocity
+						break
+					case 3: // west (-x), deflect towards +x
+						if (ball_velocity.x < ball_min_velocity) ball_velocity.x = ball_min_velocity
+						break
+				}
+				ball.SetPhysVelocity(ball_velocity)
+			}
+
+			local ball_velocity_squared = ball_velocity.Length2DSqr()
+			local min_velocity_squared = ball_min_velocity * ball_min_velocity
+
+			// Set ball velocity to a minimum value
+			if (ball_velocity_squared < min_velocity_squared)
 			{
 				local new_velocity = (ball_velocity * 1.2)
 				if(ball_velocity_squared < 100.0) {
@@ -239,6 +270,7 @@ local CrashballArena = class {
 				}
 
 				if (new_velocity.z > 10.0) new_velocity.z = 10.0
+				ball_velocity = new_velocity
 				ball.SetPhysVelocity(new_velocity)
 			} else {
 				if (ball_velocity.z > 10.0) ball_velocity.z = 10.0
