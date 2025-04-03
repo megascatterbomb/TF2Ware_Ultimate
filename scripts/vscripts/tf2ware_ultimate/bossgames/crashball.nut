@@ -6,7 +6,7 @@ minigame <- Ware_MinigameData
 	duration       = INT_MAX.tofloat() // actual duration varies wildly depending on playercount.
     min_players    = 2
 	location       = "crashball"
-	music          = "ghostbusters-bustin"
+	music          = "frogger"
 	custom_overlay = ""
     thirdperson    = true
 	fail_on_death  = true
@@ -22,7 +22,6 @@ local player_size = 40
 local targetname_prefix = "crashball" // Prefix for all entities in the arenas.
 
 local timestamp_round_start = Time() // Time when the current round started.
-local timestamp_last_update = Time() // Time when the last update occurred.
 
 local remaining_playercount = 101 // Number of players remaining in the minigame.
 
@@ -41,7 +40,8 @@ enum CrashballState
 
 local round_number = 0
 local current_round = null
-local current_state = 0
+local current_state = CrashballState.Setup
+local last_state_change = Time()
 local final_round = false
 
 // CRASHBALL CLASSES
@@ -140,6 +140,8 @@ local CrashballArena = class {
 
 		foreach(index, player in players)
 		{
+			// FIXME: For some reason this teleport fails after round 1, even though I've quadruple-checked
+			// it's being fed the correct values AND Ware_TeleportPlayer is not being called elsewhere!
 			Ware_TeleportPlayer(player, player_positions[index], player_angles[index], vec3_zero)
 		}
 
@@ -197,7 +199,6 @@ local CrashballArena = class {
 
 	function Update()
 	{
-		UpdateScoreboard()
 		if (arena_state != CrashballState.Gaming) return;
 		// Spawn balls if needed
 		local balls = GetAllArenaEnts("ball")
@@ -303,7 +304,7 @@ local CrashballArena = class {
 			countdown_start = Time()
 		}
 
-		timestamp_last_update = Time()
+		UpdateScoreboard()
 	}
 
 	function IncrementBallLimit()
@@ -427,29 +428,42 @@ local CrashballArena = class {
 	function Cleanup()
 	{
 		// Remove all balls.
+		local entities = []
 		foreach(ball in GetAllArenaEnts("ball"))
 		{
-			ball.Kill()
+			entities.append(ball)
 		}
-		foreach(lasers in env_lasers)
+		foreach(laser in [
+			GetArenaEnt("laser_north_left")
+			GetArenaEnt("laser_north_right")
+			GetArenaEnt("laser_south_left")
+			GetArenaEnt("laser_south_right")
+			GetArenaEnt("laser_east_left")
+			GetArenaEnt("laser_east_right")
+			GetArenaEnt("laser_west_left")
+			GetArenaEnt("laser_west_right")
+		])
 		{
-			foreach(ent in lasers)
-			{
-				// TODO: find out why lasers sometimes can't be killed
-				try {
-					ent.Kill()
-				} catch (e) {
-					printl("Couldn't kill a laser for some reason")
-				}
-			}
+			entities.append(laser)
 		}
-		env_lasers = []
-		foreach (ent in func_brushes)
+		foreach (brush in [
+			GetArenaEnt("wall_north")
+			GetArenaEnt("wall_south")
+			GetArenaEnt("wall_east")
+			GetArenaEnt("wall_west")
+		])
+		{
+			entities.append(brush)
+		}
+		entities.append(point_worldtext)
+
+		foreach (ent in entities)
 		{
 			ent.Kill()
 		}
+
+		env_lasers = []
 		func_brushes = []
-		point_worldtext.Kill()
 		point_worldtext = null
 		arena_state = CrashballState.Cleaned
 	}
@@ -597,6 +611,7 @@ local CrashballRound = class {
 	function constructor(table = null)
 	{
 		round_config = {} // Arena configuration.
+		arenas = []
 
 		if (table)
 		{
@@ -609,7 +624,7 @@ local CrashballRound = class {
 	{
 		foreach(index, group in player_groups)
 		{
-			local arena_config = round_config
+			local arena_config = clone(round_config)
 
 			arena_config.players <- group
 			arena_config.index <- index
@@ -618,9 +633,10 @@ local CrashballRound = class {
 
 			arenas.append(a)
 		}
-
-		foreach (arena in arenas)
+		foreach(i, arena in arenas)
 		{
+			printl(format("///////////////////// ARENA %d /////////////////////", i))
+
 			arena.Setup()
 		}
 	}
@@ -639,6 +655,7 @@ local CrashballRound = class {
 		{
 			arena.Start()
 		}
+		last_state_change = Time()
 		current_state = CrashballState.Gaming
 	}
 
@@ -654,8 +671,9 @@ local CrashballRound = class {
 
 	function ForceEnd()
 	{
-		if (current_state = CrashballState.Gaming)
+		if (current_state == CrashballState.Gaming)
 		{
+			last_state_change = Time()
 			current_state = CrashballState.Ending
 			foreach (arena in arenas)
 			{
@@ -668,6 +686,7 @@ local CrashballRound = class {
 
 	function End()
 	{
+		last_state_change = Time()
 		current_state = CrashballState.Finished
 	}
 
@@ -689,6 +708,7 @@ local CrashballRound = class {
 		{
 			arena.Cleanup()
 		}
+		last_state_change = Time()
 		current_state = CrashballState.Cleaned
 	}
 }
@@ -697,6 +717,7 @@ local CrashballRound = class {
 
 function StartCrashballRound()
 {
+	last_state_change = Time()
 	current_state = CrashballState.Setup
 	round_number++
 	local players = Ware_GetAlivePlayers()
@@ -738,7 +759,7 @@ function StartCrashballRound()
 	Ware_CreateTimer(@() current_round.UpdateScoreboards(32, "2..."), 4.0)
 	Ware_CreateTimer(@() current_round.UpdateScoreboards(32, "1..."), 5.0)
 	Ware_CreateTimer(@() current_round.UpdateScoreboards(32, "GO!"), 6.0)
-    Ware_CreateTimer(@() current_round.Start(), 7.0)
+    // call to current_round.Start() in OnUpdate()
 }
 
 // Divide players into arenas.
@@ -748,7 +769,6 @@ function StartCrashballRound()
 function DividePlayersIntoArenas(players)
 {
 	local groups = []
-
 	function CreateGroup(size)
 	{
 		local group = []
@@ -832,6 +852,7 @@ function GetRoundConfig(is_final)
 function CleanupCrashballRound()
 {
 	if (!current_round) return
+	printl("CLEANING ROUND")
 	current_round.Cleanup()
 	current_round = null
 }
@@ -872,20 +893,21 @@ function OnStart()
 function OnUpdate()
 {
 	remaining_playercount = Ware_GetAlivePlayers().len()
-    if (current_state == CrashballState.Gaming && current_round)
+	switch (current_state)
 	{
-		current_round.Update()
-		if(current_round.CheckIfAllArenasFinished())
-		{
-			current_round.End()
-		}
-	} else if (current_state == CrashballState.Finished && Time() - timestamp_last_update > 3.0 )
-	{
-		CleanupCrashballRound()
-	}
-	else if (current_state == CrashballState.Cleaned)
-	{
-		StartCrashballRound()
+		case CrashballState.Setup:
+			if (Time() - last_state_change > 7.0) current_round.Start()
+		case CrashballState.Gaming:
+			if (!current_round) break
+			current_round.Update()
+			if(current_round.CheckIfAllArenasFinished()) current_round.End()
+			break
+		case CrashballState.Finished:
+			if(Time() - last_state_change > 3.0) CleanupCrashballRound()
+			break
+		case CrashballState.Cleaned:
+			StartCrashballRound()
+			break
 	}
 }
 
